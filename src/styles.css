@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", "Iowan Old Style", Palatino, "Palatino Linotype", serif;
+
+  --color-ink: #1c1712;
+  --color-paper: #f3ecdf;
+  --color-sheet: #faf6ef;
+  --color-brass: #8d5a2b;
+  --color-stage: #16130f;
+  --color-ivory: #f4efe6;
+
+  --aspect-reel: 9 / 16;
+  --aspect-portrait: 4 / 5;
+  --spacing-guide-top: 14%;
+  --spacing-guide-bottom: 20%;
+  --spacing-title-x: 8%;
+  --spacing-title-y: 70%;
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+    background: var(--color-paper);
+  }
+
+  body {
+    min-height: 100dvh;
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-synthesis: none;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  [role="slider"]:focus-visible {
+    outline: 2px solid var(--color-brass);
+    outline-offset: 3px;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-brass) 32%, white);
+    color: var(--color-ink);
+  }
+}
+
+@layer components {
+  .btn {
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 999px;
+    padding-inline: 1.25rem;
+    font-size: 0.875rem;
+    font-weight: 560;
+    letter-spacing: 0.01em;
+    transition: background-color 160ms ease, color 160ms ease, opacity 160ms ease;
+  }
+
+  .btn:disabled {
+    opacity: 0.45;
+  }
+
+  .btn-ink {
+    background: var(--color-ink);
+    color: var(--color-paper);
+  }
+
+  .btn-ink:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-ink) 88%, white);
+  }
+
+  .btn-line {
+    background: transparent;
+    color: var(--color-ink);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-ink) 18%, transparent);
+  }
+
+  .btn-line:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-ink) 5%, transparent);
+  }
+
+  .seg {
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    padding-inline: 0.9rem;
+    font-size: 0.875rem;
+    color: color-mix(in srgb, var(--color-ink) 72%, transparent);
+  }
+
+  .seg[data-on="true"] {
+    background: var(--color-ink);
+    color: var(--color-paper);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn {
+    transition: none;
+  }
+}
