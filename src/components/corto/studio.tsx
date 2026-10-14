@@ -11,6 +11,7 @@ import {
   formatSpan,
 } from "@/lib/corto/media";
 import { selectShorts } from "@/lib/corto/select";
+import { grabVideo, type GrabProgress } from "@/lib/grab-video";
 import {
   DEFAULT_SETTINGS,
   aspectLabel,
@@ -69,6 +70,8 @@ function explain(error: unknown) {
   return "Non sono riuscito a completare l'operazione. Riprova.";
 }
 
+const megabytes = (bytes: number) => (bytes / 1048576).toFixed(1).replace(".", ",");
+
 function saveFile(blob: Blob, filename: string) {
   const href = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -98,6 +101,7 @@ export function Studio() {
   const [playing, setPlaying] = useState(false);
   const [reelPlaying, setReelPlaying] = useState(false);
   const [exporting, setExporting] = useState<{ id: string; progress: number } | null>(null);
+  const [grab, setGrab] = useState<GrabProgress | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const stageRef = useRef<HTMLVideoElement>(null);
@@ -105,6 +109,7 @@ export function Studio() {
   const ownedUrl = useRef<string | null>(null);
   const jobRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
+  const grabAbort = useRef<AbortController | null>(null);
   const exportAbort = useRef<AbortController | null>(null);
   const exportLock = useRef(false);
   const clipsRef = useRef(clips);
@@ -146,6 +151,7 @@ export function Studio() {
   useEffect(() => {
     return () => {
       abortRef.current?.abort();
+      grabAbort.current?.abort();
       exportAbort.current?.abort();
       if (ownedUrl.current) URL.revokeObjectURL(ownedUrl.current);
     };
@@ -250,6 +256,7 @@ export function Studio() {
   }
 
   async function begin(url: string, file: File | null, name: string, owned: boolean) {
+    stopGrab();
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -290,6 +297,41 @@ export function Studio() {
     }
   }
 
+  function stopGrab() {
+    grabAbort.current?.abort();
+    grabAbort.current = null;
+    setGrab(null);
+  }
+
+  async function grabLink(url: string) {
+    stopGrab();
+    const controller = new AbortController();
+    grabAbort.current = controller;
+    setError(null);
+    setGrab({ loaded: 0, total: null });
+    try {
+      const file = await grabVideo(url, {
+        signal: controller.signal,
+        onProgress: (value) => {
+          if (grabAbort.current === controller) setGrab(value);
+        },
+      });
+      if (grabAbort.current !== controller) return;
+      grabAbort.current = null;
+      setGrab(null);
+      takeFile(file);
+    } catch (caught) {
+      if (grabAbort.current !== controller) return;
+      grabAbort.current = null;
+      setGrab(null);
+      setError(
+        caught instanceof Error && caught.message
+          ? caught.message
+          : "Non sono riuscito a scaricare il video. Riprova.",
+      );
+    }
+  }
+
   function takeFile(file: File) {
     if (file.size < 1000) {
       setError("Il file è vuoto o troppo piccolo.");
@@ -312,9 +354,13 @@ export function Studio() {
       setError("Incolla un indirizzo che inizia con http o https.");
       return;
     }
-    if (kind === "youtube" || kind === "social") {
+    if (kind === "youtube") {
+      void grabLink(link.trim());
+      return;
+    }
+    if (kind === "social") {
       setError(
-        "YouTube, Instagram, TikTok e Vimeo non lasciano leggere il file dal browser. Scarica il video, se ne hai il diritto, e caricalo qui. Oppure incolla un link diretto a un mp4 o webm.",
+        "Instagram, TikTok e Vimeo non lasciano leggere il file dal browser. Scarica il video, se ne hai il diritto, e caricalo qui. Oppure incolla un link YouTube o un link diretto a un mp4 o webm.",
       );
       return;
     }
@@ -438,6 +484,8 @@ export function Studio() {
             over={over}
             onLink={setLink}
             onSubmit={openLink}
+            grab={grab}
+            onCancelGrab={stopGrab}
             onFile={takeFile}
             onDemo={() => void begin("/demo.mp4", null, "Video dimostrativo", false)}
             onBrowse={() => fileRef.current?.click()}
@@ -822,8 +870,9 @@ export function Studio() {
         )}
 
         <footer className="mt-12 border-t border-ink/10 pt-6 text-sm leading-relaxed text-ink/55">
-          Tutto resta nel browser: il video non viene inviato a un server. Per questo Corto si apre come un sito
-          statico. I link delle piattaforme social non sono leggibili; un file o un URL diretto sì.
+          I file che carichi restano nel browser e non vengono inviati a un server. I link YouTube passano da un
+          server solo per scaricare il video. Instagram, TikTok e Vimeo non sono supportati; un file o un URL
+          diretto sì.
         </footer>
       </main>
     </div>
@@ -855,6 +904,8 @@ function Intake({
   over,
   onLink,
   onSubmit,
+  grab,
+  onCancelGrab,
   onFile,
   onDemo,
   onBrowse,
@@ -865,19 +916,24 @@ function Intake({
   over: boolean;
   onLink: (value: string) => void;
   onSubmit: (event: FormEvent) => void;
+  grab: GrabProgress | null;
+  onCancelGrab: () => void;
   onFile: (file: File) => void;
   onDemo: () => void;
   onBrowse: () => void;
   onOver: (value: boolean) => void;
   fileRef: RefObject<HTMLInputElement | null>;
 }) {
+  const pct =
+    grab && grab.total ? Math.min(100, Math.round((grab.loaded / grab.total) * 100)) : null;
+
   return (
     <div>
       <h1 className="max-w-xl font-display text-4xl leading-tight tracking-tight sm:text-5xl">
         I momenti che contano, in un minuto.
       </h1>
       <p className="mt-4 max-w-xl text-base leading-relaxed text-ink/70">
-        Carica un video o incolla un link diretto. Corto individua i passaggi più pieni e li consegna in shorts da
+        Carica un video o incolla un link, anche di YouTube. Corto individua i passaggi più pieni e li consegna in shorts da
         60 secondi, verticali e senza effetti.
       </p>
 
@@ -921,21 +977,52 @@ function Intake({
 
         <form onSubmit={onSubmit} className="mt-8">
           <label htmlFor="video-link" className="text-sm font-medium">
-            Link diretto al file
+            Link al video
           </label>
           <div className="mt-2 flex flex-col gap-2 sm:flex-row">
             <input
               id="video-link"
               value={link}
               inputMode="url"
-              placeholder="https://…/filmato.mp4"
+              disabled={grab !== null}
+              placeholder="Link YouTube o https://…/filmato.mp4"
               onChange={(event) => onLink(event.target.value)}
-              className="h-11 min-w-0 flex-1 rounded-full bg-paper px-4 text-sm ring-1 ring-ink/15"
+              className="h-11 min-w-0 flex-1 rounded-full bg-paper px-4 text-sm ring-1 ring-ink/15 disabled:opacity-60"
             />
-            <button type="submit" className="btn btn-line">
-              Apri
-            </button>
+            {grab ? (
+              <button type="button" className="btn btn-line" onClick={onCancelGrab}>
+                Annulla
+              </button>
+            ) : (
+              <button type="submit" className="btn btn-line">
+                Apri
+              </button>
+            )}
           </div>
+          {grab ? (
+            <div className="mt-3">
+              <div
+                role="progressbar"
+                aria-label="Download del video"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={pct ?? undefined}
+                className="h-1.5 overflow-hidden rounded-full bg-ink/10"
+              >
+                <div
+                  className={`h-full rounded-full bg-ink transition-[width] ${
+                    pct === null ? "w-1/3 animate-pulse motion-reduce:animate-none" : ""
+                  }`}
+                  style={pct === null ? undefined : { width: `${pct}%` }}
+                />
+              </div>
+              <p aria-live="polite" className="mt-1.5 text-sm text-ink/65">
+                {pct !== null && grab.total
+                  ? `Scarico il video: ${pct}% (${megabytes(grab.loaded)} di ${megabytes(grab.total)} MB)`
+                  : `Scarico il video: ${megabytes(grab.loaded)} MB`}
+              </p>
+            </div>
+          ) : null}
         </form>
       </div>
     </div>
